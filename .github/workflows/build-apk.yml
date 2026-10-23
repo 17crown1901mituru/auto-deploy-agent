@@ -1,0 +1,41 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ※ ここにフロントエンド（WebViewアプリ）の依存関係インストールとビルド処理が入ります
+      - name: Build Web Assets & Compile APK
+        run: |
+          echo "Building WebView UI and compiling APK..."
+          # 例: npm install && npx cap build android 等のビルドコマンドをここに記述
+          mkdir -p output
+          echo "Mock APK Binary" > output/auto-deploy-agent.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: output/*.apk
