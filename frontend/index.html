@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Deploy Agent Control Panel</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { font-size: 1.5rem; color: #38bdf8; margin-bottom: 1rem; }
+        label { display: block; margin-top: 10px; font-size: 0.875rem; color: #94a3b8; }
+        input, textarea { width: 100%; padding: 10px; margin-top: 5px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; box-sizing: border-box; }
+        textarea { height: 120px; resize: vertical; }
+        button { background: #0284c7; color: white; border: none; padding: 12px; width: 100%; margin-top: 15px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button:hover { background: #0ea5e9; }
+        .status-box { margin-top: 20px; padding: 10px; background: #0f172a; border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: #4ade80; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Auto-Deploy Control</h1>
+        
+        <label for="projectName">Project Name</label>
+        <input type="text" id="projectName" placeholder="e.g. my-web-app">
+
+        <label for="sourceContent">Source / Requirements Document</label>
+        <textarea id="sourceContent" placeholder="Paste your documentation, requirements, or code structure here..."></textarea>
+
+        <button onclick="sendToTermuxQueue()">Queue to Termux (Offline Ready)</button>
+        <button onclick="syncGcp()" style="background: #059669; margin-top: 10px;">Sync & Deploy to GCP</button>
+
+        <div class="status-box" id="statusOutput">Status: Ready</div>
+    </div>
+
+    <script>
+        // Termux上のローカルブリッジ（例: http://localhost:8000）を叩く設定
+        const TERMUX_API = "http://localhost:8000";
+
+        async function sendToTermuxQueue() {
+            const projectName = document.getElementById('projectName').value;
+            const sourceContent = document.getElementById('sourceContent').value;
+            const output = document.getElementById('statusOutput');
+
+            if (!projectName || !sourceContent) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            output.innerText = "Status: Queuing locally in Termux...";
+
+            try {
+                const res = await fetch(`${TERMUX_API}/queue/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_name: projectName, source_content: sourceContent })
+                });
+                const data = await res.json();
+                output.innerText = `Status: Success! ${data.message}`;
+            } catch (err) {
+                output.innerText = `Status: Error - Is Termux bridge running? (${err.message})`;
+            }
+        }
+
+        async function syncGcp() {
+            const output = document.getElementById('statusOutput');
+            output.innerText = "Status: Syncing local queue to GCP...";
+
+            try {
+                const res = await fetch(`${TERMUX_API}/queue/sync`, { method: 'POST' });
+                const data = await res.json();
+                output.innerText = `Status: Synced! Processed: ${data.synced_count} tasks.`;
+            } catch (err) {
+                output.innerText = `Status: Sync failed. (${err.message})`;
+            }
+        }
+    </script>
+</body>
+</html>
