@@ -1,0 +1,82 @@
+package __PACKAGE__;
+
+import android.content.Intent;
+
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+/**
+ * TermuxのRUN_COMMANDインテントで、ブリッジの起動スクリプト(start.sh)を実行する。
+ * 事前にTermux側で allow-external-apps=true を設定しておく必要がある（README参照）。
+ */
+@CapacitorPlugin(
+    name = "TermuxLauncher",
+    permissions = {
+        @Permission(strings = { "com.termux.permission.RUN_COMMAND" }, alias = "runCommand")
+    }
+)
+public class TermuxLauncherPlugin extends Plugin {
+
+    private static final String DEFAULT_PATH =
+        "/data/data/com.termux/files/home/auto-deploy-agent/termux-bridge/start.sh";
+
+    /** Termuxのアプリ画面を開く（セットアップコマンドを貼り付けてもらうため）。 */
+    @PluginMethod
+    public void openApp(PluginCall call) {
+        String pkg = call.getString("package", "com.termux");
+        Intent intent = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
+        if (intent == null) {
+            call.reject("アプリが見つかりません: " + pkg + "（Termuxをインストールしてください）");
+            return;
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("アプリを開けません: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void startBridge(PluginCall call) {
+        if (getPermissionState("runCommand") != PermissionState.GRANTED) {
+            requestPermissionForAlias("runCommand", call, "runCommandPermissionCallback");
+            return;
+        }
+        launch(call);
+    }
+
+    @PermissionCallback
+    private void runCommandPermissionCallback(PluginCall call) {
+        if (getPermissionState("runCommand") == PermissionState.GRANTED) {
+            launch(call);
+        } else {
+            call.reject("Termuxの実行権限（RUN_COMMAND）が許可されていません");
+        }
+    }
+
+    private void launch(PluginCall call) {
+        String path = call.getString("path", DEFAULT_PATH);
+        int slash = path.lastIndexOf('/');
+        String workdir = slash > 0 ? path.substring(0, slash) : "/data/data/com.termux/files/home";
+
+        Intent intent = new Intent();
+        intent.setClassName("com.termux", "com.termux.app.RunCommandService");
+        intent.setAction("com.termux.RUN_COMMAND");
+        intent.putExtra("com.termux.RUN_COMMAND_PATH", path);
+        intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", workdir);
+        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
+        try {
+            getContext().startService(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Termuxを起動できません: " + e.getMessage());
+        }
+    }
+}

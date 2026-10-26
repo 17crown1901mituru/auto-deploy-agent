@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Auto Deploy</title>
+<style>
+  :root {
+    --bg: #0e131a; --panel: #161d27; --panel-2: #1c2531; --line: #2a3546;
+    --text: #e7edf5; --muted: #8d9aac;
+    --blue: #5aa9ff; --amber: #f2b84b; --green: #4cc38a; --red: #f0625f;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--sans);
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 12px 16px 96px; }
+  header.top { display: flex; align-items: center; gap: 10px; padding: 12px 0 8px; }
+  header.top h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: .01em; flex: 1; }
+  header.top .back { background: none; border: 0; color: var(--blue); font-size: 15px; padding: 6px 8px 6px 0; cursor: pointer; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+  .dot.ok { background: var(--green); } .dot.warn { background: var(--amber); } .dot.bad { background: var(--red); } .dot.work { background: var(--blue); }
+  .icon-btn { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; width: 38px; height: 38px; font-size: 18px; cursor: pointer; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+  .card.attn { border-color: var(--amber); }
+  .card.err { border-color: var(--red); }
+  .card.good { border-color: var(--green); }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+
+  label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+  input[type=text], input[type=password], textarea, select {
+    width: 100%; padding: 11px 12px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; font: inherit;
+  }
+  textarea { min-height: 120px; resize: vertical; }
+  input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+  .btn { display: block; width: 100%; padding: 13px 14px; margin-top: 12px; border-radius: 10px; border: 1px solid var(--line);
+         background: var(--panel-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: center; }
+  .btn.primary { background: var(--blue); color: #06121f; border-color: var(--blue); }
+  .btn.go { background: var(--green); color: #04150d; border-color: var(--green); }
+  .btn.danger { color: var(--red); }
+  .btn.link { background: none; border: 0; color: var(--muted); font-weight: 500; }
+  .btn.link.danger { color: var(--red); }
+  .btn:disabled { opacity: .5; }
+  .btn-row { display: flex; gap: 10px; } .btn-row .btn { margin-top: 12px; }
+
+  .job { display: block; width: 100%; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+         padding: 12px 14px; margin: 10px 0; color: inherit; font: inherit; cursor: pointer; }
+  .job .name { font-weight: 700; overflow-wrap: anywhere; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+  .rail { list-style: none; margin: 4px 0 0; padding: 0; }
+  .rail li { position: relative; padding: 0 0 14px 26px; font-size: 14px; color: var(--muted); }
+  .rail li:last-child { padding-bottom: 0; }
+  .rail li::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: -2px; width: 2px; background: var(--line); }
+  .rail li:last-child::before { display: none; }
+  .rail li .mark { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); }
+  .rail li.done { color: var(--text); } .rail li.done .mark { background: var(--green); border-color: var(--green); }
+  .rail li.done::before { background: var(--green); }
+  .rail li.active { color: var(--text); font-weight: 700; } .rail li.active .mark { border-color: var(--blue); background: var(--blue); animation: pulse 1.6s ease-in-out infinite; }
+  .rail li.attention { color: var(--text); font-weight: 700; } .rail li.attention .mark { border-color: var(--amber); background: var(--amber); }
+  .rail li.error { color: var(--text); font-weight: 700; } .rail li.error .mark { border-color: var(--red); background: var(--red); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(90,169,255,.18); } }
+  @media (prefers-reduced-motion: reduce) { .rail li.active .mark { animation: none; } }
+
+  .q { margin: 14px 0; } .q .text { font-weight: 600; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+  .chip.on { background: var(--blue); border-color: var(--blue); color: #06121f; font-weight: 700; }
+
+  .files { list-style: none; margin: 8px 0 0; padding: 0; }
+  .files li button { display: flex; width: 100%; gap: 10px; align-items: center; background: none; border: 0; border-top: 1px solid var(--line);
+                     color: var(--text); font: inherit; padding: 10px 0; text-align: left; cursor: pointer; }
+  .files li:first-child button { border-top: 0; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); flex: none; }
+  .tag.gen { border-color: var(--blue); color: var(--blue); }
+  .path { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; flex: 1; }
+
+  pre.log { margin: 8px 0 0; padding: 10px; background: #0a0f15; border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto;
+            font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: #c7d2e0; }
+  summary { cursor: pointer; font-weight: 700; padding: 2px 0; }
+
+  .url { display: block; font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; color: var(--green); margin: 6px 0; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0)); transform: translateX(-50%); max-width: 90vw;
+           background: #2b3647; color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+  .overlay { position: fixed; inset: 0; background: rgba(5,9,14,.86); z-index: 10; padding: calc(16px + env(safe-area-inset-top, 0)) 16px 16px; display: flex; flex-direction: column; }
+  .overlay pre { flex: 1; overflow: auto; margin: 10px 0 0; max-height: none; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- 設定
+const SETTINGS_KEY = "autoDeploy.settings";
+const BAKED_REPO = "__REPO_URL__";   // GitHub Actionsのビルド時に、このリポジトリのURLへ置き換わる
+const DEFAULTS = {
+  url: "http://127.0.0.1:8000",
+  token: "",
+  backendUrl: "",
+  session: "",
+  email: "",
+  repoUrl: "",
+  startPath: "/data/data/com.termux/files/home/auto-deploy-agent/termux-bridge/start.sh",
+};
+let settings = Object.assign({}, DEFAULTS);
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch (e) { /* 初回 */ }
+const repoUrl = () => (settings.repoUrl || (BAKED_REPO.startsWith("__") ? "" : BAKED_REPO)).trim();
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* 保存できなくても動く */ } }
+
+// ---------------------------------------------------------------- 表示用の定数
+const STATUS = {
+  queued:            { label: "オフライン待機", tone: "warn" },
+  analyzing:         { label: "解析中", tone: "work" },
+  needs_info:        { label: "質問があります", tone: "warn" },
+  drafting:          { label: "成果物を作成中", tone: "work" },
+  trial_running:     { label: "仮実行中", tone: "work" },
+  awaiting_approval: { label: "承認待ち", tone: "warn" },
+  deploying:         { label: "デプロイ中", tone: "work" },
+  needs_permission:  { label: "権限の承認が必要", tone: "warn" },
+  deployed:          { label: "デプロイ完了", tone: "ok" },
+  failed:            { label: "失敗", tone: "bad" },
+  rejected:          { label: "却下", tone: "" },
+};
+const BUSY = ["queued", "analyzing", "drafting", "trial_running", "deploying"];
+const STAGES = ["解析", "成果物の作成", "仮実行", "承認", "デプロイ"];
+const CUR_BY_STATUS = { queued: 0, analyzing: 0, needs_info: 0, drafting: 1, trial_running: 2, awaiting_approval: 3, deploying: 4, needs_permission: 4, deployed: 5 };
+
+// ---------------------------------------------------------------- 小さな部品
+function h(tag, props, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === false || v == null) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    el.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+const $app = document.getElementById("app");
+
+let toastTimer = null;
+function toast(msg) {
+  document.querySelectorAll(".toast").forEach(n => n.remove());
+  const t = h("div", { class: "toast", role: "status" }, msg);
+  document.body.append(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 3200);
+}
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtSize(n) { return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`; }
+
+function statusEl(status) {
+  const s = STATUS[status] || { label: status, tone: "" };
+  return h("span", { class: "status" }, h("span", { class: "dot " + s.tone }), s.label);
+}
+
+// ---------------------------------------------------------------- API
+function detailText(d) {
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map(x => x.msg || JSON.stringify(x)).join(" / ");
+  return JSON.stringify(d);
+}
+
+async function api(path, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout || 10000);
+  try {
+    const headers = { "X-Bridge-Token": settings.token };
+    if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(settings.url.replace(/\/+$/, "") + path, {
+      method: opts.method || "GET", headers, signal: ctrl.signal,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(detailText(data.detail) || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("応答がありません（タイムアウト）");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ブリッジの状態: "unknown" | "ok" | "offline" | "unauthorized"
+let bridge = "unknown";
+let lastJobs = [];
+async function checkBridge() {
+  try {
+    await api("/", { timeout: 4000 });
+  } catch (e) { bridge = "offline"; return bridge; }
+  try {
+    lastJobs = (await api("/jobs", { timeout: 6000 })).jobs;
+    bridge = "ok";
+  } catch (e) { bridge = e.status === 401 ? "unauthorized" : "offline"; return bridge; }
+  await syncSession();
+  return bridge;
+}
+
+// ---------------------------------------------------------------- ログイン（Google）
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const cleanUrl = u => (u || "").trim().replace(/\/+$/, "");
+let loginRun = 0;
+
+function b64url(buf) {
+  let s = "";
+  for (const b of new Uint8Array(buf)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomId(bytes) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return b64url(a); }
+async function sha256b64url(text) { return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))); }
+
+function sessionValid() {
+  try {
+    const body = settings.session.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(body)).exp * 1000 > Date.now();
+  } catch (e) { return false; }
+}
+
+function openExternal(url) {
+  const browser = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+  if (browser && browser.open) { browser.open({ url }); return; }
+  window.open(url, "_blank");
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("コピーしました"); }
+  catch (e) { toast("コピーできませんでした。表示された文字を長押しして選んでください"); }
+}
+
+// 外部ブラウザでGoogleにログインし、結果を受け取る（ログインの合言葉はこの端末の中で作る）
+async function loginWithGoogle(onMessage) {
+  const base = cleanUrl(settings.backendUrl);
+  const run = ++loginRun;
+  const id = randomId(18), verifier = randomId(32);
+  const challenge = await sha256b64url(verifier);
+  openExternal(`${base}/auth/login?id=${id}&c=${challenge}`);
+  const started = Date.now();
+  while (Date.now() - started < 10 * 60 * 1000 && run === loginRun) {
+    await sleep(2000);
+    if (run !== loginRun) break;
+    let data;
+    try {
+      const res = await fetch(base + "/auth/poll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, verifier }) });
+      data = await res.json();
+    } catch (e) { onMessage("バックエンドに接続できません。電波とURLを確認してください"); continue; }
+    if (data.status === "ready") {
+      settings.session = data.session; settings.email = data.email; saveSettings();
+      return data.email;
+    }
+    // ブラウザがまだ最初のページを開く前は invalid になることがあるので、最初の20秒は待つ
+    if (data.status === "invalid" && Date.now() - started > 20000) throw new Error("ログインが無効になりました。もう一度お試しください");
+  }
+  if (run !== loginRun) throw new Error("キャンセルしました");
+  throw new Error("時間切れです。もう一度お試しください");
+}
+
+// ログイン情報をTermuxのブリッジにも渡す（ブリッジがバックエンドを呼ぶときに使う）
+async function syncSession() {
+  if (!settings.session || !settings.backendUrl || !sessionValid()) return;
+  try {
+    const info = await api("/session");
+    const backend = cleanUrl(settings.backendUrl);
+    if (!info.logged_in || (info.email || "").toLowerCase() !== (settings.email || "").toLowerCase() || info.backend_url !== backend) {
+      await api("/session", { method: "POST", body: { session: settings.session, backend_url: backend } });
+    }
+  } catch (e) { /* 次の確認でもう一度試す */ }
+}
+
+// Termuxに貼り付ける1行コマンド（トークンの保存と allow-external-apps の設定も、これが行う）
+function setupCommand() {
+  const repo = repoUrl();
+  if (!repo) return "";
+  return `pkg install -y git && (git -C ~/auto-deploy-agent pull -q 2>/dev/null || git clone ${repo} ~/auto-deploy-agent) && BRIDGE_TOKEN=${settings.token} bash ~/auto-deploy-agent/termux-bridge/setup.sh`;
+}
+
+async function openTermuxApp() {
+  const plugin = termuxLauncher();
+  if (!plugin || !plugin.openApp) { toast("Termuxを手動で開いてください"); return; }
+  try { await plugin.openApp({ package: "com.termux" }); } catch (e) { toast(e.message || "Termuxを開けません"); }
+}
+
+function termuxLauncher() {
+  return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TermuxLauncher;
+}
+async function startTermux() {
+  const plugin = termuxLauncher();
+  if (!plugin) { toast("Termuxの起動はAPKの中だけで使えます"); return false; }
+  try {
+    await plugin.startBridge({ path: settings.startPath });
+  } catch (e) {
+    toast("Termuxを起動できません: " + (e.message || e));
+    return false;
+  }
+  toast("Termuxを起動しています…");
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if ((await checkBridge()) !== "offline") { toast(bridge === "ok" ? "ブリッジに接続しました" : "起動しました。トークンを設定してください"); return true; }
+  }
+  toast("起動を確認できませんでした。Termuxを開いて start.sh を確認してください");
+  return false;
+}
+
+// ---------------------------------------------------------------- 画面遷移
+let view = { name: "home" };
+let pollTimer = null;
+let pollGen = 0;
+
+function go(next, replace) {
+  view = next;
+  if (replace) history.replaceState(next, ""); else history.pushState(next, "");
+  render();
+}
+window.addEventListener("popstate", e => { view = e.state || { name: "home" }; render(); });
+
+function stopPolling() { pollGen++; clearTimeout(pollTimer); }
+function poll(fn, ms) {
+  const gen = ++pollGen;
+  clearTimeout(pollTimer);
+  const loop = async () => {
+    if (gen !== pollGen) return;
+    let next = ms;
+    try { next = (await fn()) || ms; } catch (e) { /* 次回に再試行 */ }
+    if (gen === pollGen) pollTimer = setTimeout(loop, next);
+  };
+  loop();
+}
+
+function render() {
+  stopPolling();
+  loginRun++;   // 画面を離れたら、待っているログインはやめる
+  $app.replaceChildren();
+  if (view.name === "setup") return renderSetup();
+  if (view.name === "new") return renderNew();
+  if (view.name === "job") return renderJob(view.id);
+  if (view.name === "settings") return renderSettings();
+  return renderHome();
+}
+
+function topBar(title, opts = {}) {
+  return h("header", { class: "top" },
+    opts.back ? h("button", { class: "back", onclick: () => history.back(), "aria-label": "戻る" }, "‹ 戻る") : null,
+    h("h1", null, title),
+    opts.conn ? h("span", { class: "conn", id: "conn" }) : null,
+    opts.settings ? h("button", { class: "icon-btn", onclick: () => go({ name: "settings" }), "aria-label": "設定" }, "⚙") : null);
+}
+function setConn() {
+  const el = document.getElementById("conn");
+  if (!el) return;
+  const map = { ok: ["ok", "接続中"], offline: ["bad", "未接続"], unauthorized: ["warn", "トークン違い"], unknown: ["", "確認中"] };
+  const [tone, text] = map[bridge] || map.unknown;
+  el.replaceChildren(h("span", { class: "dot " + tone }), text);
+}
+
+// ---------------------------------------------------------------- ホーム
+function renderHome() {
+  const list = h("div", { id: "jobs" });
+  const notice = h("div", { id: "notice" });
+  const loginNotice = h("div", { id: "loginNotice" });
+  function drawLoginNotice() {
+    loginNotice.replaceChildren(...(sessionValid() ? [] : [h("div", { class: "card attn" },
+      h("h2", null, "Googleにログインしてください"),
+      h("p", { class: "muted small", style: "margin:0" }, "未ログイン、または期限切れです。ログインしたアカウントだけが、デプロイを操作できます。"),
+      h("button", { class: "btn primary", onclick: () => go({ name: "setup" }) }, "ログインする"))]));
+  }
+  $app.append(
+    topBar("Auto Deploy", { conn: true, settings: true }),
+    loginNotice,
+    notice,
+    h("button", { class: "btn primary", onclick: () => go({ name: "new" }) }, "新しいジョブを作る"),
+    list);
+  setConn();
+
+  function drawList() {
+    list.replaceChildren();
+    if (!lastJobs.length) {
+      list.append(h("p", { class: "muted", style: "text-align:center;margin-top:28px" }, "まだジョブがありません。資料やコードを渡すと、解析からデプロイまで進めます。"));
+    }
+    for (const j of lastJobs) {
+      list.append(h("button", { class: "job", onclick: () => go({ name: "job", id: j.id }) },
+        h("div", { class: "row" }, h("span", { class: "name grow" }, j.project_name), statusEl(j.status)),
+        h("div", { class: "muted small" }, fmtTime(j.updated_at) + (j.message ? "　" + j.message : ""))));
+    }
+  }
+  if (lastJobs.length) drawList();  // 前回の一覧をすぐ見せる（通信が終わるまで空にしない）
+  drawLoginNotice();
+
+  poll(async () => {
+    drawLoginNotice();
+    await checkBridge();
+    setConn();
+    notice.replaceChildren();
+    if (bridge === "offline") {
+      notice.append(h("div", { class: "card attn" },
+        h("h2", null, "Termuxのブリッジに接続できません"),
+        h("p", { class: "muted small" }, "Termuxでブリッジを起動すると、ここにジョブが表示されます。"),
+        h("button", { class: "btn primary", onclick: startTermux }, "Termuxを起動する"),
+        h("button", { class: "btn", onclick: () => go({ name: "settings" }) }, "接続設定を開く")));
+      return 4000;
+    }
+    if (bridge === "unauthorized") {
+      notice.append(h("div", { class: "card attn" },
+        h("h2", null, "トークンが一致しません"),
+        h("p", { class: "muted small" }, "Termuxで cat ~/.auto-deploy/bridge_token を実行し、表示された値を設定に貼り付けてください。"),
+        h("button", { class: "btn primary", onclick: () => go({ name: "settings" }) }, "設定を開く")));
+      return 4000;
+    }
+    drawList();
+    return 3000;
+  }, 3000);
+}
+
+// ---------------------------------------------------------------- 新規ジョブ
+function renderNew() {
+  let files = [];
+  const fileList = h("div", { class: "small muted" });
+  const name = h("input", { type: "text", id: "pname", placeholder: "例: my-web-app", autocomplete: "off" });
+  const desc = h("textarea", { id: "desc", placeholder: "何を作ったか、動かし方、公開したい場所などを書いてください。READMEや仕様書をファイルで渡してもかまいません。" });
+  const target = h("select", { id: "target" },
+    h("option", { value: "auto" }, "おまかせ（資料から判断）"),
+    h("option", { value: "cloud-run" }, "Cloud Run"));
+  const input = h("input", { type: "file", multiple: true, style: "display:none" });
+  const submit = h("button", { class: "btn primary" }, "ジョブを作る");
+
+  function drawFiles() {
+    fileList.replaceChildren(...(files.length
+      ? files.map((f, i) => h("div", { class: "row", style: "margin:4px 0" },
+          h("span", { class: "path" }, f.path), h("span", null, fmtSize(f.content.length)),
+          h("button", { class: "chip", onclick: () => { files.splice(i, 1); drawFiles(); } }, "外す")))
+      : [h("span", null, "テキストファイル（コード・設定・文書）を選べます。1ファイル200KBまで。")]));
+  }
+  input.addEventListener("change", async () => {
+    for (const f of input.files) {
+      if (f.size > 200000) { toast(`${f.name} は大きすぎます（200KBまで）`); continue; }
+      const text = await f.text();
+      if (text.includes("\u0000")) { toast(`${f.name} はテキストではないため追加できません`); continue; }
+      files = files.filter(x => x.path !== f.name);
+      files.push({ path: f.name, content: text });
+    }
+    input.value = "";
+    drawFiles();
+  });
+  drawFiles();
+
+  submit.addEventListener("click", async () => {
+    if (!name.value.trim()) { toast("プロジェクト名を入力してください"); return; }
+    if (!desc.value.trim() && !files.length) { toast("説明を書くか、ファイルを選んでください"); return; }
+    submit.disabled = true;
+    try {
+      const { id } = await api("/jobs", { method: "POST", body: {
+        project_name: name.value.trim(), source_content: desc.value, files, target_env: target.value } });
+      go({ name: "job", id }, true);
+    } catch (e) {
+      toast(e.message);
+      submit.disabled = false;
+    }
+  });
+
+  $app.append(
+    topBar("新しいジョブ", { back: true }),
+    h("div", { class: "card" },
+      h("label", { for: "pname" }, "プロジェクト名"), name,
+      h("label", { for: "desc" }, "説明・要件"), desc,
+      h("label", null, "ファイル"), fileList,
+      h("button", { class: "btn", onclick: () => input.click() }, "ファイルを選ぶ"), input,
+      h("label", { for: "target" }, "デプロイ先"), target),
+    submit);
+}
+
+// ---------------------------------------------------------------- ジョブ詳細
+function stageStates(job) {
+  const st = job.status;
+  let cur;
+  if (st in CUR_BY_STATUS) cur = CUR_BY_STATUS[st];
+  else {  // failed / rejected: 持っているデータから、どこまで進んだかを推定
+    const done = [!!job.analysis, job.artifacts.length > 0, !!job.trial, !!job.deploy_url, false];
+    cur = done.findIndex(d => !d);
+    if (cur < 0) cur = 4;
+  }
+  return STAGES.map((_, i) => {
+    if (i < cur) return "done";
+    if (i > cur) return "todo";
+    if (st === "failed") return "error";
+    if (st === "needs_info" || st === "awaiting_approval" || st === "needs_permission") return "attention";
+    if (st === "rejected" || st === "queued") return "todo";
+    return "active";
+  });
+}
+
+function renderJob(id) {
+  const body = h("div", { id: "jobBody" });
+  const logPre = h("pre", { class: "log", id: "logBox" }, "");
+  let logOffset = -1;
+  let signature = "";
+  let latest = null;
+
+  $app.append(
+    topBar("ジョブ", { back: true }),
+    body,
+    h("div", { class: "card" }, h("details", { open: false },
+      h("summary", null, "ログ"),
+      h("div", { class: "muted small", id: "logPath" }),
+      logPre)));
+
+  async function pullLog() {
+    const { text, offset } = await api(`/jobs/${id}/log?offset=${logOffset}`);
+    logOffset = offset;
+    if (text) {
+      const stick = logPre.scrollTop + logPre.clientHeight >= logPre.scrollHeight - 24;
+      logPre.append(document.createTextNode(text));
+      if (stick) logPre.scrollTop = logPre.scrollHeight;
+    }
+  }
+
+  poll(async () => {
+    const job = await api(`/jobs/${id}`);
+    latest = job;
+    const sig = [job.status, job.updated_at, job.message].join("|");
+    if (sig !== signature) { signature = sig; drawJob(job); }
+    document.getElementById("logPath").textContent = job.log_path || "";
+    await pullLog().catch(() => {});
+    return BUSY.includes(job.status) || (job.permissions && job.permissions.waiting) ? 1500 : 4000;
+  }, 1500);
+
+  function drawJob(job) {
+    const children = [
+      h("div", { class: "card" },
+        h("div", { class: "row" }, h("h2", { class: "grow", style: "margin:0;font-size:17px;overflow-wrap:anywhere" }, job.project_name), statusEl(job.status)),
+        job.message ? h("p", { class: "muted small", style: "margin:6px 0 10px" }, job.message) : null,
+        h("ol", { class: "rail" }, stageStates(job).map((s, i) => h("li", { class: s }, h("span", { class: "mark" }), STAGES[i]))))];
+
+    if (job.status === "queued") children.push(queuedCard());
+    if (job.status === "needs_info") children.push(questionsCard(job));
+    if (job.status === "awaiting_approval") children.push(...approvalCards(job));
+    if (job.status === "needs_permission") children.push(...permissionCards(job));
+    if (job.status === "deployed") children.push(deployedCard(job));
+    if (job.status === "failed" || job.status === "rejected") children.push(retryCard(job));
+    body.replaceChildren(...children);
+  }
+
+  async function act(label, fn) {
+    try { await fn(); await refreshNow(); } catch (e) { toast(`${label}: ${e.message}`); }
+  }
+  async function refreshNow() { signature = ""; const job = await api(`/jobs/${id}`); signature = [job.status, job.updated_at, job.message].join("|"); latest = job; drawJob(job); }
+
+  function queuedCard() {
+    return h("div", { class: "card attn" },
+      h("p", { class: "small", style: "margin-top:0" }, "GCPに接続できなかったため待機しています。電波がつながったら再試行してください。"),
+      h("button", { class: "btn primary", onclick: () => act("再試行", () => api("/queue/sync", { method: "POST" })) }, "再試行する"));
+  }
+
+  function questionsCard(job) {
+    const answers = {};
+    const blocks = job.questions.map(q => {
+      const text = h("input", { type: "text", placeholder: "自由に入力", autocomplete: "off" });
+      const chips = h("div", { class: "chips" }, (q.options || []).map(opt => {
+        const chip = h("button", { class: "chip", type: "button" }, opt);
+        chip.addEventListener("click", () => {
+          answers[q.id] = opt; text.value = "";
+          chips.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === chip));
+        });
+        return chip;
+      }));
+      text.addEventListener("input", () => {
+        answers[q.id] = text.value;
+        chips.querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
+      });
+      return h("div", { class: "q" }, h("div", { class: "text" }, q.question), chips, text);
+    });
+    return h("div", { class: "card attn" },
+      h("h2", null, "確認したいことがあります"), ...blocks,
+      h("button", { class: "btn primary", onclick: () => {
+        const filled = Object.fromEntries(Object.entries(answers).filter(([, v]) => v && v.trim()));
+        if (Object.keys(filled).length < job.questions.length && !confirm("未回答の質問があります。このまま送りますか？")) return;
+        if (!Object.keys(filled).length) { toast("回答を入力してください"); return; }
+        act("送信", () => api(`/jobs/${id}/answers`, { method: "POST", body: { answers: filled } }));
+      } }, "回答を送る"));
+  }
+
+  function approvalCards(job) {
+    const a = job.analysis || {};
+    const t = job.trial || {};
+    const cards = [];
+    cards.push(h("div", { class: "card" },
+      h("h2", null, "解析の結果"),
+      a.summary ? h("p", { style: "margin:0 0 6px" }, a.summary) : null,
+      a.stack ? h("div", { class: "muted small" }, "構成: " + a.stack) : null,
+      a.deploy ? h("div", { class: "muted small" }, `デプロイ先: Cloud Run / ${a.deploy.service_name} / ${a.deploy.region}`) : null,
+      a.notes ? h("p", { class: "small", style: "margin:8px 0 0" }, "メモ: " + a.notes) : null));
+
+    cards.push(h("div", { class: "card" },
+      h("h2", null, `成果物（${job.artifacts.length}件）`),
+      h("ul", { class: "files" }, job.artifacts.map(f => h("li", null,
+        h("button", { onclick: () => openFile(f.path) },
+          h("span", { class: "path" }, f.path),
+          h("span", { class: "tag " + (f.origin === "generated" ? "gen" : "") }, f.origin === "generated" ? "生成" : "入力"),
+          h("span", { class: "muted small" }, fmtSize(f.size))))))));
+
+    const trialTone = t.skipped ? "" : (t.ok ? "good" : "attn");
+    cards.push(h("div", { class: "card " + trialTone },
+      h("h2", null, "仮実行"),
+      h("p", { class: "small", style: "margin:0" },
+        t.skipped ? `スキップ: ${t.detail}` : (t.ok ? `成功: ${t.detail}` : `失敗: ${t.detail || "詳細はログを確認してください"}`)),
+      t.ok === false ? h("p", { class: "small muted", style: "margin:6px 0 0" }, "仮実行が失敗しています。ログを見て、問題なければそのまま承認できます。") : null));
+
+    const feedback = h("textarea", { placeholder: "直してほしい点を書いてください（例: ポートを3000に、Dockerfileを軽く）", style: "min-height:80px" });
+    const reviseBox = h("div", { style: "display:none" }, feedback,
+      h("button", { class: "btn primary", onclick: () => act("修正依頼", () => api(`/jobs/${id}/revise`, { method: "POST", body: { feedback: feedback.value } })) }, "この内容で作り直す"));
+
+    let visibility = "private";
+    const visNote = h("p", { class: "small muted", style: "margin:8px 0 0" });
+    const visChips = h("div", { class: "chips", style: "margin-top:10px" });
+    const setVisibility = v => {
+      visibility = v;
+      visChips.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.v === v));
+      visNote.textContent = v === "private"
+        ? `${settings.email || "ログイン中のアカウント"} でGoogleログインした人だけが開けます（IAPで保護）。`
+        : "URLを知っていれば誰でも開けます。個人情報や秘密を含むものは公開しないでください。";
+    };
+    for (const [v, label] of [["private", "自分だけ（既定）"], ["public", "誰でも（公開）"]]) {
+      visChips.append(h("button", { class: "chip", type: "button", "data-v": v, onclick: () => setVisibility(v) }, label));
+    }
+    setVisibility("private");
+
+    cards.push(h("div", { class: "card attn" },
+      h("h2", null, "この内容で本番にデプロイしますか？"),
+      h("p", { class: "small muted", style: "margin:0" }, "承認すると、GCPのCloud Runに公開されます。公開範囲:"),
+      visChips, visNote,
+      h("button", { class: "btn go", onclick: () => {
+        const msg = visibility === "private"
+          ? "本番環境（Cloud Run）にデプロイします。あなたのアカウントだけが開けます。よろしいですか？"
+          : "本番環境（Cloud Run）に、誰でも開ける状態でデプロイします。よろしいですか？";
+        if (confirm(msg)) act("承認", () => api(`/jobs/${id}/approve`, { method: "POST", body: { visibility } }));
+      } }, "承認してデプロイ"),
+      h("button", { class: "btn", onclick: () => { reviseBox.style.display = reviseBox.style.display === "none" ? "block" : "none"; } }, "修正を依頼する"),
+      reviseBox,
+      h("button", { class: "btn link danger", onclick: () => { if (confirm("却下します。デプロイはされません。")) act("却下", () => api(`/jobs/${id}/reject`, { method: "POST" })); } }, "却下する")));
+    return cards;
+  }
+
+  async function openFile(path) {
+    try {
+      const { content } = await api(`/jobs/${id}/file?path=${encodeURIComponent(path)}`);
+      const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": path },
+        h("div", { class: "row" }, h("span", { class: "path" }, path), h("button", { class: "chip", onclick: () => overlay.remove() }, "閉じる")),
+        h("pre", { class: "log" }, content));
+      document.body.append(overlay);
+    } catch (e) { toast(e.message); }
+  }
+
+  const PERM_LABEL = {
+    enable_api: r => `APIを有効にする: ${r.params.api}`,
+    grant_deployer_roles: () => "デプロイ用のアカウントに、基本のロールを付与する",
+    grant_builder_role: () => "Cloud Buildのアカウントに、ビルド用のロールを付与する",
+    run_invoker_iap: r => `IAPがCloud Run（${r.params.service}）を呼び出せるようにする`,
+    iap_access: r => `${r.params.member} だけがサービス（${r.params.service}）を開けるようにする`,
+    create_iap_agent: () => "IAPのサービスエージェントを作成する",
+  };
+  const permLabel = r => (PERM_LABEL[r.type] || (() => r.type))(r);
+  const permDetail = r => {
+    const p = r.params || {};
+    const lines = [];
+    if (p.member && r.type !== "iap_access") lines.push(`対象: ${p.member}`);
+    if (p.roles && p.roles.length) lines.push(`ロール: ${p.roles.join(", ")}`);
+    return lines.length ? h("div", { class: "muted small", style: "overflow-wrap:anywhere;white-space:pre-line" }, lines.join("\n")) : null;
+  };
+
+  function permissionCards(job) {
+    const p = job.permissions || {};
+    const reqs = p.requests || [], hints = p.hints || [], results = p.results || [];
+    const cards = [];
+    const start = () => act("承認", async () => {
+      const { url } = await api(`/jobs/${id}/permissions/start`, { method: "POST", timeout: 40000 });
+      openExternal(url);
+    });
+    if (reqs.length) {
+      cards.push(h("div", { class: "card attn" },
+        h("h2", null, "GCPの権限の承認が必要です"),
+        h("p", { class: "small muted", style: "margin:0 0 4px" },
+          "デプロイを続けるために、次の権限が必要とエージェントが判断しました。承認すると、あなたのGoogleアカウントの権限で、この内容だけが1回実行されます。承認するまで、何も変更されません。"),
+        h("ul", { class: "files" }, reqs.map(r => h("li", { style: "padding:10px 0;border-top:1px solid var(--line)" },
+          h("div", { style: "font-weight:600;overflow-wrap:anywhere" }, permLabel(r)),
+          r.reason ? h("div", { class: "muted small" }, r.reason) : null, permDetail(r)))),
+        p.waiting
+          ? h("div", null,
+              h("p", { class: "small", style: "margin:12px 0 0" }, "Googleの画面で承認してください。承認が終わると、自動でデプロイを再開します。"),
+              h("button", { class: "btn", onclick: start }, "承認画面をもう一度開く"))
+          : h("button", { class: "btn go", onclick: start }, "Googleで承認して付与する")));
+    }
+    if (hints.length) {
+      cards.push(h("div", { class: "card attn" },
+        h("h2", null, "手動での設定が必要です"),
+        ...hints.map(t => h("p", { class: "small", style: "margin:6px 0" }, t)),
+        h("button", { class: "btn primary", onclick: () => act("再デプロイ", () => api(`/jobs/${id}/approve`, { method: "POST", body: { visibility: job.visibility || "private" } })) }, "設定したので、もう一度デプロイする")));
+    }
+    if (results.length && !p.waiting) {
+      cards.push(h("div", { class: "card err" },
+        h("h2", null, "付与の結果"),
+        ...results.map(r => h("p", { class: "small", style: "margin:6px 0;overflow-wrap:anywhere" }, `${r.ok ? "✓" : "✗"} ${r.type}${r.ok ? "" : "：" + (r.output || "")}`))));
+    }
+    cards.push(h("div", { class: "card" },
+      h("button", { class: "btn link danger", style: "margin-top:0", onclick: () => { if (confirm("却下します。デプロイはされません。")) act("却下", () => api(`/jobs/${id}/reject`, { method: "POST" })); } }, "承認せずに却下する")));
+    return cards;
+  }
+
+  function deployedCard(job) {
+    const url = job.deploy_url;
+    const who = job.visibility === "private"
+      ? `このURLは、${settings.email || "ログインしたアカウント"} でGoogleログインした人だけが開けます（初回はログイン画面が出ます）。`
+      : "このURLは、知っていれば誰でも開けます。";
+    return h("div", { class: "card good" },
+      h("h2", null, "公開されました"),
+      url ? h("a", { class: "url", href: url, target: "_blank", rel: "noopener" }, url) : h("p", { class: "small" }, "URLを取得できませんでした。ログを確認してください。"),
+      h("p", { class: "small muted", style: "margin:4px 0 0" }, who),
+      url ? h("div", { class: "btn-row" },
+        h("button", { class: "btn go", onclick: () => openExternal(url) }, "開く"),
+        h("button", { class: "btn", onclick: () => copyText(url) }, "コピー")) : null);
+  }
+
+  function retryCard(job) {
+    const canCheck = job.analysis && job.analysis.deploy;
+    const needsLogin = job.error === "auth_required";
+    return h("div", { class: "card " + (job.status === "failed" ? "err" : "") },
+      job.error && job.error !== "interrupted" && !needsLogin ? h("p", { class: "small", style: "margin:0 0 4px;overflow-wrap:anywhere" }, job.error) : null,
+      needsLogin ? h("button", { class: "btn primary", onclick: () => go({ name: "setup" }) }, "Googleにログインする") : null,
+      h("button", { class: "btn " + (needsLogin ? "" : "primary"), onclick: () => act("やり直し", () => api(`/jobs/${id}/revise`, { method: "POST", body: { feedback: "" } })) }, "やり直す"),
+      canCheck && job.status === "failed" ? h("button", { class: "btn", onclick: () => act("確認", async () => { const r = await api(`/jobs/${id}/check-deploy`, { method: "POST", timeout: 70000 }); toast("稼働中: " + r.url); }) }, "結果を確認（GCP側の状態）") : null);
+  }
+}
+
+// ---------------------------------------------------------------- 設定
+function stepCard(n, title, done, ...children) {
+  return h("div", { class: "card" + (done ? " good" : "") }, h("h2", null, `${done ? "✓ " : ""}${n}. ${title}`), ...children);
+}
+
+// ---------------------------------------------------------------- 初期設定（初回起動・再ログイン）
+function renderSetup() {
+  if (!settings.token) { settings.token = randomId(32); saveSettings(); }   // ブリッジとの合言葉は、アプリが決める
+  const backend = h("input", { type: "text", id: "b-url", value: settings.backendUrl, placeholder: "https://auto-deploy-backend-xxxxx.a.run.app", autocapitalize: "off", autocorrect: "off" });
+  const repo = h("input", { type: "text", id: "b-repo", value: settings.repoUrl, placeholder: "https://github.com/あなた/auto-deploy-agent.git", autocapitalize: "off", autocorrect: "off" });
+  const loginMsg = h("div", { class: "small muted", style: "margin-top:8px", id: "loginMsg" });
+  const connMsg = h("div", { class: "small", style: "margin-top:4px", id: "connMsg" });
+  const cmdBox = h("pre", { class: "log", style: "max-height:none", id: "cmdBox" });
+  const container = h("div", { id: "setup" });
+  let loggingIn = false;
+
+  repo.addEventListener("input", () => { settings.repoUrl = repo.value.trim(); saveSettings(); cmdBox.textContent = setupCommand() || "（リポジトリのURLを入れると、ここにコマンドが出ます）"; });
+
+  async function doLogin() {
+    const url = cleanUrl(backend.value);
+    if (!/^https?:\/\/[^\s/]+/.test(url)) { toast("バックエンドのURLを入力してください"); return; }
+    settings.backendUrl = url; saveSettings();
+    loggingIn = true; draw();
+    loginMsg.textContent = "ブラウザが開きます。Googleでログインしたら、このアプリに戻ってください。";
+    try {
+      const email = await loginWithGoogle(m => { loginMsg.textContent = m; });
+      toast(`${email} でログインしました`);
+      await syncSession();
+    } catch (e) { if (e.message !== "キャンセルしました") toast(e.message); }
+    loggingIn = false;
+    if (view.name === "setup") draw();
+  }
+
+  function draw() {
+    const loggedIn = sessionValid();
+    const bridgeOk = bridge === "ok";
+    cmdBox.textContent = setupCommand() || "（リポジトリのURLを入れると、ここにコマンドが出ます）";
+    container.replaceChildren(
+      stepCard(1, "Googleでログイン", loggedIn,
+        h("p", { class: "small muted", style: "margin:0 0 4px" },
+          "バックエンド（Cloud Run）のURLを入れて、Googleアカウントでログインします。ログインしたアカウントだけがデプロイを操作でき、デプロイしたサービスも、既定ではそのアカウントだけが開けます。"),
+        h("label", { for: "b-url" }, "バックエンドのURL"), backend,
+        loggedIn ? h("p", { class: "small", style: "margin:10px 0 0" }, `ログイン中: ${settings.email}`) : null,
+        h("button", { class: "btn primary", disabled: loggingIn ? "" : false, onclick: doLogin }, loggingIn ? "ログイン待ち…" : (loggedIn ? "別のアカウントでログインし直す" : "Googleでログイン")),
+        loggingIn ? h("button", { class: "btn link", onclick: () => { loginRun++; loggingIn = false; draw(); } }, "キャンセル") : null,
+        loginMsg),
+      stepCard(2, "Termuxを準備する", bridgeOk,
+        h("p", { class: "small muted", style: "margin:0 0 4px" },
+          "下のコマンドをコピーして、Termuxに貼り付けて実行してください。パッケージの導入、APKからの起動を許可する設定（termux.properties）、合言葉の保存、ブリッジの起動までを自動で行います。"),
+        !repoUrl() ? [h("label", { for: "b-repo" }, "このアプリのリポジトリURL"), repo] : null,
+        cmdBox,
+        h("div", { class: "btn-row" },
+          h("button", { class: "btn", onclick: () => { const c = setupCommand(); if (c) copyText(c); else toast("先にリポジトリのURLを入力してください"); } }, "コマンドをコピー"),
+          h("button", { class: "btn", onclick: openTermuxApp }, "Termuxを開く"))),
+      stepCard(3, "接続を確認", bridgeOk && loggedIn,
+        connMsg,
+        h("button", { class: "btn link", onclick: () => go({ name: "home" }, true) }, "あとで設定する")));
+  }
+
+  function bridgeText() {
+    return { ok: "Termuxのブリッジにつながりました。", offline: "Termuxのブリッジに届きません。コマンドの実行が終わるまでお待ちください。", unauthorized: "つながりましたが、合言葉が違います。上のコマンドをもう一度実行してください。", unknown: "確認しています…" }[bridge];
+  }
+
+  $app.append(topBar("初期設定", {}), container);
+  draw();
+  let shown = "";
+  poll(async () => {
+    await checkBridge();
+    connMsg.textContent = bridgeText() + (bridge === "ok" && !sessionValid() ? " ステップ1のログインが終わると完了します。" : "");
+    if (bridge + sessionValid() !== shown) { shown = bridge + sessionValid(); if (!loggingIn) draw(); }
+    if (bridge === "ok" && sessionValid()) { toast("準備ができました"); go({ name: "home" }, true); return; }
+    return 3000;
+  }, 3000);
+}
+
+// ---------------------------------------------------------------- 設定
+function renderSettings() {
+  const field = (id, value, extra) => h("input", Object.assign({ type: "text", id, value, autocapitalize: "off", autocorrect: "off" }, extra || {}));
+  const backend = field("s-backend", settings.backendUrl);
+  const url = field("s-url", settings.url);
+  const token = field("s-token", settings.token, { type: "password", autocomplete: "off" });
+  const path = field("s-path", settings.startPath);
+  const repo = field("s-repo", settings.repoUrl, { placeholder: BAKED_REPO.startsWith("__") ? "https://github.com/あなた/auto-deploy-agent.git" : BAKED_REPO });
+  const result = h("div", { class: "small muted", style: "margin-top:10px" });
+
+  const read = () => {
+    settings.backendUrl = cleanUrl(backend.value);
+    settings.url = url.value.trim() || DEFAULTS.url;
+    settings.token = token.value.trim();
+    settings.startPath = path.value.trim() || DEFAULTS.startPath;
+    settings.repoUrl = repo.value.trim();
+    saveSettings();
+  };
+
+  $app.append(
+    topBar("設定", { back: true }),
+    h("div", { class: "card" },
+      h("h2", null, "Googleアカウント"),
+      h("p", { class: "small", style: "margin:0" }, sessionValid() ? `ログイン中: ${settings.email}` : "未ログイン（または期限切れ）"),
+      h("label", { for: "s-backend" }, "バックエンドのURL"), backend,
+      h("button", { class: "btn primary", onclick: () => { read(); go({ name: "setup" }); } }, sessionValid() ? "ログインし直す・初期設定をやり直す" : "ログインする"),
+      sessionValid() ? h("button", { class: "btn", onclick: async () => {
+        settings.session = ""; settings.email = ""; saveSettings();
+        try { await api("/session", { method: "DELETE" }); } catch (e) { /* ブリッジが止まっていても、アプリ側はログアウトする */ }
+        toast("ログアウトしました"); renderSettingsAgain();
+      } }, "ログアウト") : null),
+    h("div", { class: "card" },
+      h("h2", null, "Termuxのブリッジ"),
+      h("label", { for: "s-url" }, "ブリッジのURL"), url,
+      h("label", { for: "s-token" }, "合言葉（アプリが自動で決めた値）"), token,
+      h("label", { for: "s-path" }, "Termuxの起動スクリプト"), path,
+      h("label", { for: "s-repo" }, "このアプリのリポジトリURL（Termuxのセットアップ用）"), repo,
+      h("button", { class: "btn primary", onclick: () => { read(); toast("保存しました"); } }, "保存"),
+      h("button", { class: "btn", onclick: async () => {
+        read(); result.textContent = "確認しています…";
+        await checkBridge();
+        result.textContent = { ok: "接続できました。", offline: "ブリッジに届きません。Termuxで起動しているか確認してください。", unauthorized: "つながりましたが、合言葉が違います。" }[bridge] || "";
+      } }, "接続テスト"),
+      h("button", { class: "btn", onclick: async () => { read(); await startTermux(); result.textContent = ""; } }, "Termuxを起動する"),
+      h("button", { class: "btn", onclick: () => { read(); const c = setupCommand(); if (c) copyText(c); else toast("リポジトリのURLを入力してください"); } }, "セットアップコマンドをコピー"),
+      result));
+}
+function renderSettingsAgain() { $app.replaceChildren(); renderSettings(); }
+
+// ---------------------------------------------------------------- 起動
+if (!settings.session || !settings.backendUrl) view = { name: "setup" };   // 初回起動は、初期設定から
+history.replaceState(view, "");
+render();
+</script>
+</body>
+</html>

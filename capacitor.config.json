@@ -1,0 +1,8 @@
+{
+  "appId": "com.autodeploy.agent",
+  "appName": "Auto Deploy",
+  "webDir": "frontend",
+  "server": {
+    "androidScheme": "http"
+  }
+}

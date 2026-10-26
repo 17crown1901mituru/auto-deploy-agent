@@ -1,0 +1,6 @@
+# google-adk が fastapi>=0.115 / uvicorn>=0.34 を要求するため、元のピン留め(0.110.0/0.28.0)は外しています
+fastapi>=0.115,<1.0
+uvicorn>=0.34
+pydantic>=2.6,<3.0
+google-adk>=1.0.0
+litellm>=1.84.0

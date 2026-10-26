@@ -1,0 +1,8 @@
+node_modules/
+android/
+output/
+*.apk
+__pycache__/
+*.pyc
+.venv/
+.env

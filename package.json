@@ -1,0 +1,15 @@
+{
+  "name": "auto-deploy-agent",
+  "version": "2.0.0",
+  "private": true,
+  "description": "スマホ(Termux)とGCPで動く自動デプロイエージェントのAPK",
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/browser": "^6.0.0",
+    "@capacitor/core": "^6.2.0",
+    "ai": "^7.0.153"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

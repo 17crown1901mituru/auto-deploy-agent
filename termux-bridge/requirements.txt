@@ -1,0 +1,4 @@
+# Termuxで pydantic のビルドに失敗する場合は、先に `pkg install python-pydantic` を試してください
+fastapi
+uvicorn
+requests
